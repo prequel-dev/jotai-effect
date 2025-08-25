@@ -20,16 +20,16 @@ function getBuildingBlocks(store: Store) {
   logDebug('getBuildingBlocks called', { store: store.constructor.name }); // DEBUG: Log building blocks access
   const buildingBlocks = INTERNAL_getBuildingBlocks(store)
   return [
-    buildingBlocks[1], // mountedAtoms
+    buildingBlocks[1], // mountedAtoms (mountedMap)
     buildingBlocks[3], // changedAtoms
     initializeStoreHooks(buildingBlocks[6]), // storeHooks
-    buildingBlocks[11], // ensureAtomState
-    buildingBlocks[14], // readAtomState
-    buildingBlocks[16], // writeAtomState
-    buildingBlocks[17], // mountDependencies
-    buildingBlocks[15], // invalidateDependents
-    buildingBlocks[13], // recomputeInvalidatedAtoms
-    buildingBlocks[12], // flushCallbacks
+    buildingBlocks[10], // ensureAtomState
+    buildingBlocks[13], // readAtomState
+    buildingBlocks[15], // writeAtomState
+    buildingBlocks[16], // mountDependencies
+    buildingBlocks[14], // invalidateDependents
+    buildingBlocks[12], // recomputeInvalidatedAtoms
+    buildingBlocks[11], // flushCallbacks
   ] as const
 }
 
