@@ -151,7 +151,7 @@ export function atomEffect(effect: Effect): Atom<void> & { effect: Effect } {
             setAtomStateValueOrPromise(a, v, ensureAtomState)
             mountDependencies(a)
             if (prevEpochNumber !== aState.n) {
-              ebugLog('setter: atom changed, invalidating dependents'); // DEBUG: Log atom change
+              logDebug('setter: atom changed, invalidating dependents'); // DEBUG: Log atom change
               changedAtoms.add(a)
               storeHooks.c?.(a)
               invalidateDependents(a)
