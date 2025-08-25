@@ -15,7 +15,8 @@ export default {
     "jotai/vanilla",
     "jotai/vanilla/internals",
     "react",
-    "react-dom"
+    "react-dom",
+    "@prequel-dev/logger"
   ],
   plugins: [
     resolve({
