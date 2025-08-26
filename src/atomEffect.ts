@@ -1,5 +1,6 @@
 import type { Atom, Getter, Setter, WritableAtom } from 'jotai/vanilla'
 import { atom } from 'jotai/vanilla'
+import { logDebug } from '@prequel-dev/logger'
 import type {
   INTERNAL_AtomState as AtomState,
   INTERNAL_buildStoreRev1 as buildStore,
@@ -14,6 +15,18 @@ import {
   INTERNAL_setAtomStateValueOrPromise as setAtomStateValueOrPromise,
 } from 'jotai/vanilla/internals'
 import { isDev } from './env'
+
+const randomId = function(length = 6) {
+  return Math.random()
+    .toString(36)
+    .substring(2, length + 2)
+}
+
+const id = randomId()
+
+function log(...args: unknown[]) {
+  return logDebug(`id:(${id});jotai-effect#atomEffect`, ...args)
+}
 
 function getBuildingBlocks(store: Store) {
   const buildingBlocks = INTERNAL_getBuildingBlocks(store)
@@ -53,12 +66,15 @@ type Ref = [
 ]
 
 export function atomEffect(effect: Effect): Atom<void> & { effect: Effect } {
+  // This atom's value is set via Object.assign later
   const refAtom = atom<Partial<Ref>>(() => [])
 
   const effectAtom = atom(function effectAtomRead(get) {
     const [dependencies, atomState, mountedAtoms] = get(refAtom)
     if (mountedAtoms!.has(effectAtom)) {
+      // Get all the deps
       dependencies!.forEach(get)
+      // Update the atom's epoch
       ++atomState!.n
     }
   }) as Atom<void> & { effect: Effect }
@@ -67,10 +83,14 @@ export function atomEffect(effect: Effect): Atom<void> & { effect: Effect } {
 
   effectAtom.unstable_onInit = (store) => {
     const deps = new Set<AnyAtom>()
+    /** When > 0, the effect is in progress. */
     let inProgress = 0
+    /** Set when recurse starts and unset in a finally block */
     let isRecursing = false
+    /** Set to true when the atom changes during recursion. */
     let hasChanged = false
     let fromCleanup = false
+    /** Set from the cleanup function returned by the effect. */
     let runCleanup: (() => void) | undefined
 
     function runEffect() {
@@ -78,6 +98,7 @@ export function atomEffect(effect: Effect): Atom<void> & { effect: Effect } {
         return
       }
       deps.clear()
+      /** Set to `true` while the effect is running, or while the cleanup function is running. Set to false in 'finally' blocks */
       let isSync = true
 
       const getter: GetterWithPeek = (a) => {
@@ -174,6 +195,8 @@ export function atomEffect(effect: Effect): Atom<void> & { effect: Effect } {
 
       try {
         runCleanup?.()
+        // Run the effect and store the cleanup
+        log('running effect', effectAtom.debugLabel ?? effectAtom)
         const cleanup = effectAtom.effect(getter, setter)
         if (typeof cleanup !== 'function') {
           return
@@ -214,6 +237,22 @@ export function atomEffect(effect: Effect): Atom<void> & { effect: Effect } {
       recomputeInvalidatedAtoms,
       flushCallbacks,
     ] = getBuildingBlocks(store)
+
+    log({
+      buildingBlocks: {
+        mountedAtoms,
+        changedAtoms,
+        storeHooks,
+        ensureAtomState,
+        readAtomState,
+        writeAtomState,
+        mountDependencies,
+        invalidateDependents,
+        recomputeInvalidatedAtoms,
+        flushCallbacks,
+      },
+    })
+
     const atomEffectChannel = ensureAtomEffectChannel(store)
     const atomState = ensureAtomState(effectAtom)
     // initialize atomState
@@ -240,6 +279,10 @@ export function atomEffect(effect: Effect): Atom<void> & { effect: Effect } {
     storeHooks.c.add(effectAtom, function atomOnUpdate() {
       // changed
       if (isRecursing) {
+        log(
+          'recursion scheduled instead of direct effect run!',
+          effectAtom.debugLabel ?? effectAtom
+        )
         hasChanged = true
       } else {
         atomEffectChannel.add(runEffect)
@@ -263,13 +306,31 @@ export function atomEffect(effect: Effect): Atom<void> & { effect: Effect } {
 type AtomEffectChannel = Set<() => void>
 const atomEffectChannelStoreMap = new WeakMap<Store, AtomEffectChannel>()
 
+const stores = new Set<Store>()
+
+// Note: enabling this throws an error when multiple stores use the same jotai effect module. This is normally fine behavior, but you might want this during debugging. Enabling this also keeps all stores used in memory indefinitely.
+const errorWhenMultipleStores = false
+
 function ensureAtomEffectChannel(store: Store): AtomEffectChannel {
   const storeHooks = getBuildingBlocks(store)[2]
   let atomEffectChannel = atomEffectChannelStoreMap.get(store)
   if (!atomEffectChannel) {
     atomEffectChannel = new Set()
     atomEffectChannelStoreMap.set(store, atomEffectChannel)
+
+    if (errorWhenMultipleStores) {
+      stores.add(store)
+      if (stores.size > 1) {
+        console.error('multiple effect channels!', [...stores])
+        throw new Error('multiple effect channels!')
+      }
+    }
     storeHooks.f.add(function storeOnFlush() {
+      log('flushing', {
+        atomEffectChannel: atomEffectChannel
+          ? [...atomEffectChannel]
+          : atomEffectChannel,
+      })
       // flush
       for (const fn of atomEffectChannel!) {
         atomEffectChannel!.delete(fn)
@@ -279,3 +340,33 @@ function ensureAtomEffectChannel(store: Store): AtomEffectChannel {
   }
   return atomEffectChannel
 }
+
+// Scratch pad for hard to find types and stuff
+
+// type StoreHookForAtoms = {
+//     (atom: AnyAtom): void;
+//     add(atom: AnyAtom, callback: () => void): () => void;
+//     add(atom: undefined, callback: (atom: AnyAtom) => void): () => void;
+// };
+// type StoreHooks = {
+//     /**
+//      * Listener to notify when the atom value is changed.
+//      * This is an experimental API.
+//      */
+//     readonly c ?: StoreHookForAtoms;
+//     /**
+//      * Listener to notify when the atom is mounted.
+//      * This is an experimental API.
+//      */
+//     readonly m ?: StoreHookForAtoms;
+//     /**
+//      * Listener to notify when the atom is unmounted.
+//      * This is an experimental API.
+//      */
+//     readonly u ?: StoreHookForAtoms;
+//     /**
+//      * Listener to notify when callbacks are being flushed.
+//      * This is an experimental API.
+//      */
+//     readonly f ?: StoreHook;
+// };
