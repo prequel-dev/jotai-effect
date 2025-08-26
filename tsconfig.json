@@ -15,9 +15,7 @@
     "jsx": "react",
     "baseUrl": ".",
     "paths": {
-      "jotai-effect": ["./src"],
-      "jotai": ["../../packages/jotai/dist"],
-      "jotai/*": ["../../packages/jotai/dist/*"]
+      "jotai-effect": ["./src"]
     }
   },
   "exclude": ["dist"]
